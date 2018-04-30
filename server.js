@@ -8,12 +8,11 @@ var mongo = require('mongodb').MongoClient;
 
 // we've started you off with Express, 
 // but feel free to use whatever libs or frameworks you'd like through `package.json`.
-
-// http://expressjs.com/en/starter/static-files.html
 app.use(express.static('public'))
 
+
 // http://expressjs.com/en/starter/basic-routing.html
-app.get("", (request, response) => {
+app.get("/", (request, response) => {
   response.sendFile(__dirname + '/views/index.html')
 })
 
@@ -37,24 +36,26 @@ app.get("/:id", (req, res) => {
           client.close()
         } else {
           console.log(docs)
-          if (docs.length==0) res.send("This ID doesn't exist yet in the database.")
-          else if (docs.length>1) res.send("There are " + docs.length + " items with the ID " + id + "in the database. They belong to the following URLs: " + docs[0].url + ", " + docs[1].url)
+          if (docs.length==0) res.send({"error": "This ID doesn't exist yet in the database."})
+          else if (docs.length>1) res.send({"error": "There are multiple items with this ID in the database."})
           else { 
-            res.redirect(301, 'www.spicy.com') 
+            var newURL = docs[0].url
+            if ((docs[0].url.indexOf('https://')==-1) && (docs[0].url.indexOf('http://')==-1)) newURL='https://' + newURL
+            res.redirect(newURL) 
           }
-          client.close()
-        }
-      })
+        }    
+        client.close()
+      })      
     }
   }) 
 })
 
-app.get("/new/:urlReq", (req, res) => {
+app.get("/new/:urlReq*", (req, res) => {
+  // Checks if the url is valid. If it is, it inserts it into the database and returns a JSON object containing the original and shortened url.
   var url = 'mongodb://' + process.env.DBadmin + ':' + process.env.DBpw + '@ds041404.mlab.com:41404/url-shorten'
-  var urlReq = req.params.urlReq
-  //if (ValidURL(urlReq)==false)  res.send('"' + urlReq + '" is not a valid URL.')
-  //else {
-    //res.send('I am stupid and think that "' + urlReq + '" is a valid URL.')
+  var urlReq = req.url.slice(5)
+  if (validateURL(urlReq)==false)  res.send({"error": "invalid URL"})
+  else {
     mongo.connect(url, function(err1, client) {
       if (err1) {
         res.send('There was an error connecting to the database.')
@@ -67,31 +68,29 @@ app.get("/new/:urlReq", (req, res) => {
         ).toArray(function(err2,docs) {
           if (err2) {
             console.log('There was an error in the find function.')
-            res.send('There was an error in the find function.')
+            res.send({"error": 'There was an error in the find function.'})
             client.close()
           } else {
             if (docs.length==1) {
-              res.send("This URL already is in the database under the ID " + docs[0].id + ".")
-              client.close()
+              res.send({"original_url": urlReq, "shortened_url": 'https://icy-detail.glitch.me/' + docs[0].id})
             } else if (docs.length>1) {
               res.send("There are " + docs.length + " items with this URL in the database. They belong to the following IDs: " + docs[0].id + ", " + docs[1].id)
               client.close()
             } else {
-              //res.send("This URL is not yet in the database.")
               collection.find ({}).toArray(function(err3,entries) {
                 if (err3) {
                   console.log('There was an error in the find function for the findAllEntries.')
-                  res.send('There was an error in the findAllEntries.')
+                  res.send({"error": 'There was an error in the findAllEntries function.'})
                   client.close()
                 } else {
                   var objInsert = {"id": entries.length+1, "url": urlReq}
                   collection.insert(objInsert, function(err4, result) {
                     if (err4) {
                       console.log('There was an error inserting the url into the database.')
-                      res.send('There was an error inserting the url into the database.')
+                      res.send({"error": 'There was an error inserting the url into the database.'})
                       client.close()
                     } else {
-                      res.send('Insertion into the database complete.<br>Here is your new URL: <a href="https://icy-detail.glitch.me/' + objInsert.id + '">https://icy-detail.glitch.me/' + objInsert.id + '</a>')
+                      res.send({"original_url": urlReq, "shortened_url": 'https://icy-detail.glitch.me/' + objInsert.id})
                       client.close()
                     }
                   })
@@ -102,7 +101,7 @@ app.get("/new/:urlReq", (req, res) => {
         })
       }
     }) 
-  //}
+  }
 })
 
 // listen for requests :)
@@ -111,30 +110,9 @@ const listener = app.listen(process.env.PORT, () => {
 })
 
 
-function isValidURL(urlString)
-{
-    try
-    {
-        var url = new URL(urlString);
-        url.toURI();
-        return true;
-    } catch (exception)
-    {
-        return false;
-    }
-}
-
-function ValidURL(str) {
-  var pattern = new RegExp('^(https?:\/\/)?'+ // protocol
-    '((([a-z\d]([a-z\d-]*[a-z\d])*)\.)+[a-z]{2,}|'+ // domain name
-    '((\d{1,3}\.){3}\d{1,3}))'+ // OR ip (v4) address
-    '(\:\d+)?(\/[-a-z\d%_.~+]*)*'+ // port and path
-    '(\?[;&a-z\d%_.~+=-]*)?'+ // query string
-    '(\#[-a-z\d_]*)?$','i'); // fragment locater
-  if(!pattern.test(str)) {
-    alert("Please enter a valid URL.");
-    return false;
-  } else {
-    return true;
-  }
+function validateURL(url) {
+    // Checks to see if it is an actual url
+    // Regex from https://gist.github.com/dperini/729294
+    var regex = /^(?:(?:https?|ftp):\/\/)(?:\S+(?::\S*)?@)?(?:(?!(?:10|127)(?:\.\d{1,3}){3})(?!(?:169\.254|192\.168)(?:\.\d{1,3}){2})(?!172\.(?:1[6-9]|2\d|3[0-1])(?:\.\d{1,3}){2})(?:[1-9]\d?|1\d\d|2[01]\d|22[0-3])(?:\.(?:1?\d{1,2}|2[0-4]\d|25[0-5])){2}(?:\.(?:[1-9]\d?|1\d\d|2[0-4]\d|25[0-4]))|(?:(?:[a-z\u00a1-\uffff0-9]-*)*[a-z\u00a1-\uffff0-9]+)(?:\.(?:[a-z\u00a1-\uffff0-9]-*)*[a-z\u00a1-\uffff0-9]+)*(?:\.(?:[a-z\u00a1-\uffff]{2,}))\.?)(?::\d{2,5})?(?:[/?#]\S*)?$/i;
+    return regex.test(url)
 }
