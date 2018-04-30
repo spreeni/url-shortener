@@ -17,6 +17,7 @@ app.get("/", (request, response) => {
 })
 
 app.get("/:id", (req, res) => {
+  // Checks if the ID exists in the database and if it is redirects to the original URL.
   var url = 'mongodb://' + process.env.DBadmin + ':' + process.env.DBpw + '@ds041404.mlab.com:41404/url-shorten'
   var id = req.params.id
   
@@ -77,6 +78,7 @@ app.get("/new/:urlReq*", (req, res) => {
               res.send("There are " + docs.length + " items with this URL in the database. They belong to the following IDs: " + docs[0].id + ", " + docs[1].id)
               client.close()
             } else {
+              // Searches for the length of the database to find the next index.
               collection.find ({}).toArray(function(err3,entries) {
                 if (err3) {
                   console.log('There was an error in the find function for the findAllEntries.')
